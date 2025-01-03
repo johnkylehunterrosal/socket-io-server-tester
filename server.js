@@ -26,7 +26,6 @@ io.on("connection", (socket) => {
     const rooms = Array.from(socket.rooms);
     rooms.forEach((room) => {
       if (room !== socket.id) {
-        // Exclude the socket's own room
         socket.to(room).emit("callEnded");
       }
     });
@@ -64,6 +63,12 @@ io.on("connection", (socket) => {
 
       // Notify the caller that the call is accepted
       io.to(roomName).emit("callAccepted", data.signal);
+
+      // Emit room details to all clients
+      io.emit("updateIncomingCalls", {
+        answeredCallId: data.to,
+        remainingCalls: roomUsers,
+      });
 
       // Emit room details to the agent
       socket.emit("roomDetails", { roomName, users: roomUsers });
