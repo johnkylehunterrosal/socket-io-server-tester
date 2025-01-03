@@ -8,6 +8,7 @@ const io = require("socket.io")(server, {
       "http://localhost:5173",
       "http://localhost:5174",
       "http://localhost:5175",
+      "http://localhost:5176",
     ],
     methods: ["GET", "POST"],
   },
@@ -22,7 +23,13 @@ io.on("connection", (socket) => {
   // Handle disconnection
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
-    socket.broadcast.emit("callEnded");
+    const rooms = Array.from(socket.rooms);
+    rooms.forEach((room) => {
+      if (room !== socket.id) {
+        // Exclude the socket's own room
+        socket.to(room).emit("callEnded");
+      }
+    });
   });
 
   // Handle call initiation
@@ -35,22 +42,49 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Handle answer to the call
+  // Handle answer to the call and join a common room
   socket.on("answerCall", (data) => {
-    console.log(`Answer received for call from ${data.to}`);
-    io.to(data.to).emit("callAccepted", data.signal);
+    const roomName = `room-${data.to}`;
+    console.log(
+      `Answer received for call from ${data.to}, creating/joining room: ${roomName}`
+    );
+
+    // Ensure both users join the same room
+    socket.join(roomName);
+    const callerSocket = io.sockets.sockets.get(data.to);
+    if (callerSocket) {
+      callerSocket.join(roomName);
+      console.log(`Both users joined room: ${roomName}`);
+
+      // Log all users in the room
+      const roomUsers = Array.from(
+        io.sockets.adapter.rooms.get(roomName) || []
+      );
+      console.log(`Users in room ${roomName}:`, roomUsers);
+
+      // Notify the caller that the call is accepted
+      io.to(roomName).emit("callAccepted", data.signal);
+
+      // Emit room details to the agent
+      socket.emit("roomDetails", { roomName, users: roomUsers });
+    } else {
+      console.error(`Caller socket ${data.to} not found.`);
+    }
   });
 
-  // Handle ICE candidate forwarding
+  // Handle ICE candidate forwarding within a room
   socket.on("sendIceCandidate", (data) => {
-    console.log(`Forwarding ICE candidate from ${socket.id} to ${data.to}`);
-    io.to(data.to).emit("receiveIceCandidate", { candidate: data.candidate });
+    const { to, candidate } = data;
+    console.log(`Forwarding ICE candidate to: ${to}`);
+    socket.to(to).emit("receiveIceCandidate", { candidate, from: socket.id });
   });
 
   // Handle call end
-  socket.on("endCall", () => {
-    console.log(`Call ended by ${socket.id}`);
-    socket.broadcast.emit("callEnded");
+  socket.on("endCall", (data) => {
+    const { room } = data;
+    console.log(`Call ended by ${socket.id} in room: ${room}`);
+    io.to(room).emit("callEnded");
+    io.in(room).socketsLeave(room); // Remove all users from the room
   });
 });
 
