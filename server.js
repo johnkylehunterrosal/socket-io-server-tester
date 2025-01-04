@@ -8,6 +8,7 @@ const io = require("socket.io")(server, {
     methods: ["GET", "POST"],
   },
 });
+
 app.get("/", (req, res) => {
   res.send("Hello World");
 });
@@ -88,6 +89,41 @@ io.on("connection", (socket) => {
     console.log(`Call ended by ${socket.id} in room: ${room}`);
     io.to(room).emit("callEnded");
     io.in(room).socketsLeave(room); // Remove all users from the room
+  });
+
+  // Handle driver joining a room
+  socket.on("joinRoom", (data) => {
+    const { room, driver } = data;
+
+    // Ensure the socket joins the specified room
+    socket.join(room);
+    console.log(`${driver ? driver.driverName : "User"} joined room: ${room}`);
+
+    // Notify other users in the room
+    socket.to(room).emit("userJoined", {
+      user: driver
+        ? { driverName: driver.driverName, employeeID: driver.employeeID }
+        : socket.id,
+    });
+
+    // Emit updated room details to all users in the room
+    const roomUsers = Array.from(io.sockets.adapter.rooms.get(room) || []);
+    io.to(room).emit("roomDetails", { roomName: room, users: roomUsers });
+  });
+
+  // Handle agent requesting a driver to join a room
+  socket.on("requestDriverJoin", ({ driverId, room }) => {
+    console.log(`Agent requesting driver ${driverId} to join room: ${room}`);
+
+    // Find the driver's socket by their ID
+    const driverSocket = io.sockets.sockets.get(driverId);
+    if (driverSocket) {
+      // Notify the driver
+      driverSocket.emit("joinRoomNotification", { room });
+      console.log(`Notified driver ${driverId} to join room: ${room}`);
+    } else {
+      console.error(`Driver ${driverId} is not connected.`);
+    }
   });
 });
 
