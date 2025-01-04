@@ -4,16 +4,13 @@ const app = express();
 const server = http.createServer(app);
 const io = require("socket.io")(server, {
   cors: {
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:5175",
-      "http://localhost:5176",
-    ],
+    origin: "*",
     methods: ["GET", "POST"],
   },
 });
-
+app.get("/", (req, res) => {
+  res.send("Hello World");
+});
 io.on("connection", (socket) => {
   console.log(`New connection: ${socket.id}`);
 
